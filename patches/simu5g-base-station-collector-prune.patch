@@ -1,0 +1,223 @@
+diff --git a/src/corenetwork/statsCollector/BaseStationStatsCollector.ned b/src/corenetwork/statsCollector/BaseStationStatsCollector.ned
+--- a/src/corenetwork/statsCollector/BaseStationStatsCollector.ned
++++ b/src/corenetwork/statsCollector/BaseStationStatsCollector.ned
+@@ -20,6 +20,7 @@
+ {
+     parameters:
+         string collectorType = default("eNBStatsCollector");
++        string binderModule = default("binder");
+ 
+         string macModule = default("^.cellularNic.mac");
+         string pdcpRrcModule = default("^.cellularNic.pdcpRrc");
+@@ -47,4 +48,3 @@
+         @display("i=block/cogwheel");
+         @class("BaseStationStatsCollector");
+ }
+-
+diff --git a/src/corenetwork/statsCollector/BaseStationStatsCollector.h b/src/corenetwork/statsCollector/BaseStationStatsCollector.h
+--- a/src/corenetwork/statsCollector/BaseStationStatsCollector.h
++++ b/src/corenetwork/statsCollector/BaseStationStatsCollector.h
+@@ -51,6 +51,7 @@
+     mec::Ecgi ecgi_;
+ 
+     // LTE NIC layers
++    inet::ModuleRefByPar<Binder> binder_;
+     inet::ModuleRefByPar<LtePdcpRrcEnb> pdcp_;
+     inet::ModuleRefByPar<LteMacEnb> mac_;
+     inet::ModuleRefByPar<LteRlcUm> rlc_;
+@@ -94,6 +95,8 @@
+     double dataVolumePeriod_;
+     double tPutPeriod_;
+ 
++    void pruneInactiveUeCollectors();
++
+   public:
+     ~BaseStationStatsCollector() override;
+ 
+@@ -231,4 +234,3 @@
+ } //namespace
+ 
+ #endif //_LTE_ENOBSTATSCOLLECTOR_H_
+-
+diff --git a/src/corenetwork/statsCollector/BaseStationStatsCollector.cc b/src/corenetwork/statsCollector/BaseStationStatsCollector.cc
+--- a/src/corenetwork/statsCollector/BaseStationStatsCollector.cc
++++ b/src/corenetwork/statsCollector/BaseStationStatsCollector.cc
+@@ -47,6 +47,7 @@
+         ecgi_.plmn.mcc = node->par("mcc").stdstringValue();
+         ecgi_.plmn.mnc = node->par("mnc").stdstringValue();
+ 
++        binder_.reference(this, "binderModule", true);
+         mac_.reference(this, "macModule", true);
+         pdcp_.reference(this, "pdcpRrcModule", true);
+ 
+@@ -95,6 +96,24 @@
+             scheduleAt(NOW + delayPacketPeriod_, packetDelay_);
+             scheduleAt(NOW + tPutPeriod_, tPut_);
+         }
++    }
++}
++
++void BaseStationStatsCollector::pruneInactiveUeCollectors()
++{
++    if (binder_ == nullptr)
++        return;
++
++    for (auto it = ueCollectors_.begin(); it != ueCollectors_.end(); ) {
++        if (binder_->getOmnetId(it->first) != 0) {
++            ++it;
++            continue;
++        }
++
++        EV << collectorType_ << "::pruneInactiveUeCollectors - removing inactive UE collector for node id: " << it->first << endl;
++        if (packetFlowManager_ != nullptr)
++            packetFlowManager_->deleteUe(it->first);
++        it = ueCollectors_.erase(it);
+     }
+ }
+ 
+@@ -102,6 +121,7 @@
+ {
+     if (msg->isSelfMessage()) {
+         EV << collectorType_ << "::handleMessage - get " << msg->getName() << " statistics" << endl;
++        pruneInactiveUeCollectors();
+ 
+         if (msg == prbUsage_) {
+             add_dl_total_prb_usage_cell();
+@@ -158,6 +178,7 @@
+ void BaseStationStatsCollector::resetDiscardCounterPerUe()
+ {
+     EV << collectorType_ << "::resetDiscardCounterPerUe " << endl;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         packetFlowManager_->resetDiscardCounterPerUe(ue.first);
+     }
+@@ -166,6 +187,7 @@
+ void BaseStationStatsCollector::resetDelayCounterPerUe()
+ {
+     EV << collectorType_ << "::resetDelayCounterPerUe " << endl;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         packetFlowManager_->resetDelayCounterPerUe(ue.first);
+         ue.second->resetDelayCounter();
+@@ -175,6 +197,7 @@
+ void BaseStationStatsCollector::resetThroughputCountersPerUe()
+ {
+     EV << collectorType_ << "::resetThroughputCountersPerUe " << endl;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         packetFlowManager_->resetThroughputCounterPerUe(ue.first);
+     }
+@@ -183,6 +206,7 @@
+ void BaseStationStatsCollector::resetBytesCountersPerUe()
+ {
+     EV << collectorType_ << "::resetBytesCountersPerUe " << endl;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         packetFlowManager_->resetDataVolume(ue.first);
+     }
+@@ -214,6 +238,7 @@
+ 
+ UeStatsCollector *BaseStationStatsCollector::getUeCollector(MacNodeId id)
+ {
++    pruneInactiveUeCollectors();
+     std::map<MacNodeId, UeStatsCollector *>::iterator it = ueCollectors_.find(id);
+     if (it != ueCollectors_.end()) {
+         return it->second;
+@@ -225,11 +250,13 @@
+ 
+ UeStatsCollectorMap *BaseStationStatsCollector::getCollectorMap()
+ {
++    pruneInactiveUeCollectors();
+     return &ueCollectors_;
+ }
+ 
+ bool BaseStationStatsCollector::hasUeCollector(MacNodeId id)
+ {
++    pruneInactiveUeCollectors();
+     return ueCollectors_.find(id) != ueCollectors_.end();
+ }
+ 
+@@ -273,6 +300,7 @@
+     DiscardedPkts pair = { 0, 0 };
+     DiscardedPkts temp = { 0, 0 };
+ 
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         temp = ue.second->getULDiscardedPkt();
+         pair.discarded += temp.discarded;
+@@ -294,6 +322,7 @@
+ {
+     EV << collectorType_ << "::add_dl_nongbr_pdr_cell_perUser()" << endl;
+     double discard;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         discard = packetFlowManager_->getDiscardedPktPerUe(ue.first);
+         ue.second->add_dl_nongbr_pdr_ue((int)discard);
+@@ -303,6 +332,7 @@
+ void BaseStationStatsCollector::add_ul_nongbr_pdr_cell_perUser()
+ {
+     EV << collectorType_ << "::add_ul_nongbr_pdr_cell_perUser()" << endl;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         ue.second->add_ul_nongbr_pdr_ue();
+     }
+@@ -311,6 +341,7 @@
+ void BaseStationStatsCollector::add_ul_nongbr_delay_perUser()
+ {
+     EV << collectorType_ << "::add_ul_nongbr_delay_perUser()" << endl;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         ue.second->add_ul_nongbr_delay_ue();
+     }
+@@ -320,6 +351,7 @@
+ {
+     EV << collectorType_ << "::add_dl_nongbr_delay_perUser()" << endl;
+     double delay;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         delay = packetFlowManager_->getDelayStatsPerUe(ue.first);
+         EV << collectorType_ << "::add_dl_nongbr_delay_perUser - delay: " << delay << " for node id: " << ue.first << endl;
+@@ -333,6 +365,7 @@
+ {
+     EV << collectorType_ << "::add_ul_nongbr_data_volume_ue_perUser" << endl;
+     unsigned int bytes;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         bytes = packetFlowManager_->getDataVolume(ue.first, UL);
+         EV << collectorType_ << "::add_ul_nongbr_data_volume_ue_perUser - received: " << bytes << "B in UL from node id: " << ue.first << endl;
+@@ -344,6 +377,7 @@
+ {
+     EV << collectorType_ << "::add_dl_nongbr_data_volume_ue_perUser" << endl;
+     unsigned int bytes;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         bytes = packetFlowManager_->getDataVolume(ue.first, DL);
+         EV << collectorType_ << "::add_dl_nongbr_data_volume_ue_perUser - sent: " << bytes << "B in DL to node id: " << ue.first << endl;
+@@ -355,6 +389,7 @@
+ {
+     EV << collectorType_ << "::add_dl_nongbr_throughput_ue_perUser" << endl;
+     double throughput;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         throughput = packetFlowManager_->getThroughputStatsPerUe(ue.first);
+         EV << collectorType_ << "::add_dl_nongbr_throughput_ue_perUser - throughput: " << throughput << " for node " << ue.first << endl;
+@@ -368,6 +403,7 @@
+ {
+     EV << collectorType_ << "::add_ul_nongbr_throughput_ue_perUser" << endl;
+     double throughput;
++    pruneInactiveUeCollectors();
+     for (auto const& ue : ueCollectors_) {
+         throughput = rlc_->getUeThroughput(ue.first);
+         EV << collectorType_ << "::add_ul_nongbr_throughput_ue_perUser - throughput: " << throughput << " for node " << ue.first << endl;
+@@ -428,10 +464,10 @@
+ 
+ void BaseStationStatsCollector::resetStats(MacNodeId nodeId)
+ {
++    pruneInactiveUeCollectors();
+     auto ue = ueCollectors_.find(nodeId);
+     if (ue != ueCollectors_.end())
+         ue->second->resetStats();
+ }
+ 
+ } //namespace
+-

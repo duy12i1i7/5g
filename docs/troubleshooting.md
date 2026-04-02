@@ -172,6 +172,8 @@ If the stack trace still points to `BaseStationStatsCollector`, `UeStatsCollecto
 
 This repo now also includes [`patches/simu5g-ue-collector-cleanup.patch`](../patches/simu5g-ue-collector-cleanup.patch), which unregisters dynamic vehicular UE collectors from the serving base station collector during module teardown. Without that cleanup, MEC vehicular runs can keep stale `UeStatsCollector*` pointers after SUMO removes a vehicle, eventually crashing later in the collector timer path.
 
+It also includes [`patches/simu5g-base-station-collector-prune.patch`](../patches/simu5g-base-station-collector-prune.patch), which makes `BaseStationStatsCollector` prune UE collector entries whose `MacNodeId` has already been unregistered from the binder before any per-UE timer pass. This closes the remaining crash path where `VehicularMultiCellMec` reaches methods such as `add_ul_nongbr_delay_perUser()` and dereferences a stale collector pointer even after teardown cleanup is present.
+
 Rebuild after pulling:
 
 ```bash
