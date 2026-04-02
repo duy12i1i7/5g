@@ -166,6 +166,28 @@ If you do not want to rebuild the full stack, rebuild Simu5G only in an environm
 
 `run_minimal.sh` and `run_vehicular.sh` now fail early when they detect patched Simu5G sources newer than the current `libsimu5g` build.
 
+## `VehicularMultiCellMec` crashes mid-run with `Segmentation fault`
+
+If the stack trace still points to `BaseStationStatsCollector`, `UeStatsCollector`, or `L2MeasBase` after the floating-point guard patch is already applied, pull the latest repo changes and rebuild Simu5G again.
+
+This repo now also includes [`patches/simu5g-ue-collector-cleanup.patch`](../patches/simu5g-ue-collector-cleanup.patch), which unregisters dynamic vehicular UE collectors from the serving base station collector during module teardown. Without that cleanup, MEC vehicular runs can keep stale `UeStatsCollector*` pointers after SUMO removes a vehicle, eventually crashing later in the collector timer path.
+
+Rebuild after pulling:
+
+```bash
+./build_all.sh
+```
+
+Or rebuild Simu5G only if OMNeT++ and INET are already built and sourced.
+
+## Vehicular run prints `End.` and then `Killed.`
+
+This is not, by itself, a simulation failure when it appears after `End.` and before the next config starts.
+
+In that case the OMNeT++ run already completed successfully, and the trailing `Killed.` comes from the vehicular runner shutting down the background `veins_launchd` helper that was used to manage SUMO.
+
+Treat it as benign cleanup unless it appears before `End.` or together with a stack trace, `Floating point exception`, or `Segmentation fault`.
+
 ## `run_smoke_tests.sh` fails before building
 
 The script intentionally stops early when the environment cannot support the requested scope.

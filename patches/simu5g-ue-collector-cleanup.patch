@@ -1,0 +1,146 @@
+diff --git a/src/common/binder/Binder.h b/src/common/binder/Binder.h
+--- a/src/common/binder/Binder.h
++++ b/src/common/binder/Binder.h
+@@ -613,6 +613,14 @@
+      */
+     void addUeCollectorToEnodeB(MacNodeId ue, UeStatsCollector *ueCollector, MacCellId cell);
+ 
++    /* this method removes the UeStatsCollector reference from whichever eNB/gNB
++     * currently owns it.
++     * @params:
++     *  ue: MacNodeId of the ue
++     * @return true if a collector entry was found and removed
++     */
++    bool removeUeCollectorFromEnodeB(MacNodeId ue);
++
+     /* this method moves the UeStatsCollector reference between the eNB/gNB's baseStationStatsCollector
+      * structure.
+      * @params:
+@@ -629,4 +637,3 @@
+ } //namespace
+ 
+ #endif
+-
+diff --git a/src/common/binder/Binder.cc b/src/common/binder/Binder.cc
+--- a/src/common/binder/Binder.cc
++++ b/src/common/binder/Binder.cc
+@@ -1124,7 +1124,31 @@
+     else {
+         EV << "LteBinder::addUeCollector - eNodeB [" << cell << "] does not have the eNodeBStatsCollector." <<
+             " UeCollector for node [" << ue << "] NOT added to eNodeB [" << cell << "]" << endl;
++    }
++}
++
++bool Binder::removeUeCollectorFromEnodeB(MacNodeId ue)
++{
++    EV << "LteBinder::removeUeCollector" << endl;
++
++    for (auto& enbInfo : enbList_) {
++        cModule *enb = enbInfo->eNodeB;
++        if (enb->getSubmodule("collector") == nullptr) {
++            continue;
++        }
++
++        BaseStationStatsCollector *enbColl = check_and_cast<BaseStationStatsCollector *>(enb->getSubmodule("collector"));
++        if (!enbColl->hasUeCollector(ue)) {
++            continue;
++        }
++
++        enbColl->removeUeCollector(ue);
++        EV << "LteBinder::removeUeCollector - UeCollector for node [" << ue << "] removed from eNodeB [" << enbInfo->id << "]" << endl;
++        return true;
+     }
++
++    EV << "LteBinder::removeUeCollector - UeCollector for node [" << ue << "] was not registered in any eNodeB/gNodeB collector" << endl;
++    return false;
+ }
+ 
+ void Binder::moveUeCollector(MacNodeId ue, MacCellId oldCell, MacCellId newCell)
+diff --git a/src/corenetwork/statsCollector/UeStatsCollector.h b/src/corenetwork/statsCollector/UeStatsCollector.h
+--- a/src/corenetwork/statsCollector/UeStatsCollector.h
++++ b/src/corenetwork/statsCollector/UeStatsCollector.h
+@@ -42,6 +42,10 @@
+ 
+     std::string collectorType_; // ueCollectorStatsCollector or NRueCollectorStatsCollector
+ 
++    Binder *binder_ = nullptr;
++    MacNodeId nodeId_ = NODEID_NONE;
++    bool detachedFromBaseStationCollector_ = false;
++
+     // Used by the RNI service
+     mec::AssociateId associateId_;
+ 
+@@ -66,6 +70,8 @@
+ 
+     bool handover_;
+ 
++    void detachFromBaseStationCollector();
++
+   public:
+ 
+     // methods to update L2 measures
+@@ -143,9 +149,10 @@
+     void initialize(int stages) override;
+     int numInitStages() const override { return INITSTAGE_LAST; }
+     void handleMessage(cMessage *msg) override {}
++    void finish() override;
++    void deleteModule() override;
+ };
+ 
+ } //namespace
+ 
+ #endif //_LTE_ENOBSTATSCOLLECTOR_H_
+-
+diff --git a/src/corenetwork/statsCollector/UeStatsCollector.cc b/src/corenetwork/statsCollector/UeStatsCollector.cc
+--- a/src/corenetwork/statsCollector/UeStatsCollector.cc
++++ b/src/corenetwork/statsCollector/UeStatsCollector.cc
+@@ -27,10 +27,11 @@
+         collectorType_ = par("collectorType").stringValue();
+     }
+     else if (stage == inet::INITSTAGE_APPLICATION_LAYER) { // same as lteMacUe, when reading the interface entry
+-        Binder *binder = inet::getModuleFromPar<Binder>(par("binderModule"), this);
++        binder_ = inet::getModuleFromPar<Binder>(par("binderModule"), this);
+ 
+         mac_.reference(this, "macModule", true);
+-        associateId_.value = binder->getIPv4Address(mac_->getMacNodeId()).str(); // UE_IPV4_ADDRESS
++        nodeId_ = mac_->getMacNodeId();
++        associateId_.value = binder_->getIPv4Address(nodeId_).str(); // UE_IPV4_ADDRESS
+         associateId_.type = "1"; // UE_IPV4_ADDRESS
+ 
+         /*
+@@ -45,6 +46,7 @@
+         packetFlowManager_.reference(this, "packetFlowManagerModule", isNr_);
+ 
+         handover_ = false;
++        detachedFromBaseStationCollector_ = false;
+ 
+         // packet delay
+         ul_nongbr_delay_ue.init("ul_nongbr_delay_ue", par("delayPacketPeriods"), par("movingAverage"));
+@@ -61,6 +63,27 @@
+     }
+ }
+ 
++void UeStatsCollector::detachFromBaseStationCollector()
++{
++    if (detachedFromBaseStationCollector_ || binder_ == nullptr || nodeId_ == NODEID_NONE)
++        return;
++
++    binder_->removeUeCollectorFromEnodeB(nodeId_);
++    detachedFromBaseStationCollector_ = true;
++}
++
++void UeStatsCollector::finish()
++{
++    detachFromBaseStationCollector();
++    cSimpleModule::finish();
++}
++
++void UeStatsCollector::deleteModule()
++{
++    detachFromBaseStationCollector();
++    cSimpleModule::deleteModule();
++}
++
+ void UeStatsCollector::resetDelayCounter()
+ {
+     if (packetFlowManager_ != nullptr)
