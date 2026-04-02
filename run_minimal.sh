@@ -35,11 +35,13 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+apply_local_patches
 source_omnetpp_env
 
 have_omnetpp_build || fail "opp_run not found. Run ./build_all.sh first."
 have_inet_build || fail "INET build artifacts not found. Run ./build_all.sh first."
 have_simu5g_build || fail "Simu5G build artifacts not found. Run ./build_all.sh first."
+ensure_simu5g_build_fresh
 
 RESULT_DIR="${REPO_ROOT}/results/raw/minimal_single_cell"
 ensure_dir "${RESULT_DIR}"

@@ -1,0 +1,124 @@
+diff --git a/src/corenetwork/statsCollector/L2Measures/L2MeasBase.cc b/src/corenetwork/statsCollector/L2Measures/L2MeasBase.cc
+index 14e46dd..152d955 100644
+--- a/src/corenetwork/statsCollector/L2Measures/L2MeasBase.cc
++++ b/src/corenetwork/statsCollector/L2Measures/L2MeasBase.cc
+@@ -11,35 +11,45 @@
+ 
+ #include "L2MeasBase.h"
+ 
++#include <algorithm>
++
+ namespace simu5g {
+ 
+ 
+ void L2MeasBase::init(std::string name, int period, bool movingAverage)
+ {
+     name_ = name;
+-    values_.resize(period, 0.);
+-    period_ = period;
++    period_ = std::max(period, 1);
++    values_.assign(period_, 0.);
+     size_ = 0;
+     index_ = 0;
+     sum_ = 0;
++    lastValue_ = 0;
+     mean_ = 0;
+     movingAverage_ = movingAverage;
+ }
+ 
+ 
+ void L2MeasBase::addValue(double value) {
++    if (period_ <= 0 || values_.empty()) {
++        init(name_, 1, movingAverage_);
++    }
++    if (index_ >= period_) {
++        index_ %= period_;
++    }
++
+     lastValue_ = (int)value;
+-    sum_ += value;
+     if (size_ < period_) {
+         size_++;
+     }
+     else {
+-        index_ = index_ % period_;
+         sum_ -= values_.at(index_);
+     }
+-    values_.at(index_++) = value;
++    values_.at(index_) = value;
++    sum_ += value;
++    index_++;
+ 
+-    if (movingAverage_ || index_ == period_) { // compute mean
++    if (movingAverage_ || size_ >= period_) { // compute mean
+         mean_ = computeMean();
+         //outVector_.record(mean_);
+         //histogram_.collect(mean_);
+@@ -48,7 +58,7 @@ void L2MeasBase::addValue(double value) {
+ 
+ int L2MeasBase::computeMean()
+ {
+-    if (index_ == 0)
++    if (size_ <= 0 || period_ <= 0 || values_.empty())
+         return 0;
+     if (!movingAverage_ && size_ < period_) // not enough data
+         return 0;
+@@ -74,4 +84,3 @@ void L2MeasBase::reset()
+ }
+ 
+ } //namespace
+-
+diff --git a/src/corenetwork/statsCollector/L2Measures/L2MeasBase.h b/src/corenetwork/statsCollector/L2Measures/L2MeasBase.h
+index 666e6c0..53f6ef4 100644
+--- a/src/corenetwork/statsCollector/L2Measures/L2MeasBase.h
++++ b/src/corenetwork/statsCollector/L2Measures/L2MeasBase.h
+@@ -25,13 +25,13 @@ class L2MeasBase
+   private:
+     std::string name_;
+     std::vector<double> values_;
+-    double sum_;
+-    int lastValue_;
+-    int mean_;
+-    int index_;
+-    int period_;
+-    int size_;
+-    bool movingAverage_;
++    double sum_ = 0;
++    int lastValue_ = 0;
++    int mean_ = 0;
++    int index_ = 0;
++    int period_ = 0;
++    int size_ = 0;
++    bool movingAverage_ = false;
+ 
+ //        ::cOutVector outVector_;
+ //        ::cHistogram histogram_;
+@@ -52,4 +52,3 @@ class L2MeasBase
+ } //namespace
+ 
+ #endif //_L2MEASBASE_H_
+-
+diff --git a/src/corenetwork/statsCollector/UeStatsCollector.cc b/src/corenetwork/statsCollector/UeStatsCollector.cc
+index 4aed1ec..1d4460b 100644
+--- a/src/corenetwork/statsCollector/UeStatsCollector.cc
++++ b/src/corenetwork/statsCollector/UeStatsCollector.cc
+@@ -85,8 +85,13 @@ void UeStatsCollector::add_dl_nongbr_delay_ue(double value)
+ 
+ void UeStatsCollector::add_ul_nongbr_pdr_ue()
+ {
++    if (packetFlowManager_ == nullptr)
++        return;
++
+     DiscardedPkts pair = packetFlowManager_->getDiscardedPkt();
+-    double rate = ((double)pair.discarded * 1000000) / pair.total;
++    double rate = 0.0;
++    if (pair.total > 0)
++        rate = ((double)pair.discarded * 1000000) / pair.total;
+     ul_nongbr_pdr_ue.addValue((int)rate);
+ }
+ 
+@@ -187,4 +192,3 @@ void UeStatsCollector::resetStats()
+ }
+ 
+ } //namespace
+-

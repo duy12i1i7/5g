@@ -233,6 +233,75 @@ have_simu5g_build() {
         "${SIMU5G_ROOT}/bin/simu5g_dbg"
 }
 
+resolve_simu5g_build_artifact() {
+    local candidate
+    for candidate in \
+        "${SIMU5G_ROOT}/src/libsimu5g.so" \
+        "${SIMU5G_ROOT}/src/libsimu5g.dylib" \
+        "${SIMU5G_ROOT}/src/libsimu5g.dll" \
+        "${SIMU5G_ROOT}/out/clang-release/src/libsimu5g.so" \
+        "${SIMU5G_ROOT}/out/clang-release/src/libsimu5g.dylib" \
+        "${SIMU5G_ROOT}/out/clang-release/src/libsimu5g.dll" \
+        "${SIMU5G_ROOT}/src/libsimu5g_dbg.so" \
+        "${SIMU5G_ROOT}/src/libsimu5g_dbg.dylib" \
+        "${SIMU5G_ROOT}/src/libsimu5g_dbg.dll" \
+        "${SIMU5G_ROOT}/out/clang-debug/src/libsimu5g_dbg.so" \
+        "${SIMU5G_ROOT}/out/clang-debug/src/libsimu5g_dbg.dylib" \
+        "${SIMU5G_ROOT}/out/clang-debug/src/libsimu5g_dbg.dll" \
+        "${SIMU5G_ROOT}/src/simu5g" \
+        "${SIMU5G_ROOT}/src/simu5g_dbg" \
+        "${SIMU5G_ROOT}/src/simu5g.exe" \
+        "${SIMU5G_ROOT}/bin/simu5g" \
+        "${SIMU5G_ROOT}/bin/simu5g_dbg"; do
+        if [[ -f "${candidate}" || -x "${candidate}" ]]; then
+            printf '%s\n' "${candidate}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+simu5g_stale_source_file() {
+    local artifact
+    local modified_files=()
+    local rel_path
+
+    artifact="$(resolve_simu5g_build_artifact)" || return 1
+
+    while IFS= read -r rel_path; do
+        [[ -n "${rel_path}" ]] || continue
+        modified_files+=("${SIMU5G_ROOT}/${rel_path}")
+    done < <(git -C "${SIMU5G_ROOT}" diff --name-only)
+
+    [[ "${#modified_files[@]}" -gt 0 ]] || return 1
+
+    python3 - "${artifact}" "${modified_files[@]}" <<'PY'
+import os
+import sys
+
+artifact = sys.argv[1]
+files = [path for path in sys.argv[2:] if os.path.exists(path)]
+if not os.path.exists(artifact) or not files:
+    raise SystemExit(1)
+
+artifact_mtime = os.path.getmtime(artifact)
+for path in files:
+    if os.path.getmtime(path) > artifact_mtime:
+        print(path)
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
+ensure_simu5g_build_fresh() {
+    local stale_file
+
+    if stale_file="$(simu5g_stale_source_file)"; then
+        fail "Simu5G sources are newer than the current build (${stale_file#${SIMU5G_ROOT}/}). Re-run ./build_all.sh or rebuild Simu5G before running scenarios."
+    fi
+}
+
 have_veins_build() {
     file_any \
         "${VEINS_ROOT}/out/clang-release/src/libveins.so" \

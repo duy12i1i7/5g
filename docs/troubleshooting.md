@@ -150,6 +150,22 @@ Then inspect:
 - `scenarios/vehicular_multi_cell/ApplicationDescriptors/ResponseApp.json`
 - `scenarios/vehicular_multi_cell/apps/VehicularMECResponseApp.ned`
 
+## `VehicularMultiCellMec` crashes mid-run with `Floating point exception`
+
+If the stack trace points to `BaseStationStatsCollector`, `UeStatsCollector`, or `L2MeasBase`, you are likely running a stale Simu5G binary after pulling a repo update that changed local Simu5G patches.
+
+This repo now includes [`patches/simu5g-statscollector-guards.patch`](../patches/simu5g-statscollector-guards.patch), which hardens Simu5G's RNI stats collectors against zero-length measurement windows and zero-denominator PDR calculations during MEC vehicular runs.
+
+Rebuild Simu5G after pulling:
+
+```bash
+./build_all.sh
+```
+
+If you do not want to rebuild the full stack, rebuild Simu5G only in an environment where OMNeT++ and INET are already sourced and built.
+
+`run_minimal.sh` and `run_vehicular.sh` now fail early when they detect patched Simu5G sources newer than the current `libsimu5g` build.
+
 ## `run_smoke_tests.sh` fails before building
 
 The script intentionally stops early when the environment cannot support the requested scope.
