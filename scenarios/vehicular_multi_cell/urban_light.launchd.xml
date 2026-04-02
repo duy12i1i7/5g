@@ -1,0 +1,7 @@
+<launch>
+    <copy file="urban_grid.net.xml"/>
+    <copy file="urban_light.rou.xml"/>
+    <copy file="urban_light.sumocfg" type="config"/>
+    <copy file="gui-settings.xml"/>
+</launch>
+

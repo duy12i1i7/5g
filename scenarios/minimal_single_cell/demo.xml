@@ -1,0 +1,9 @@
+<config>
+    <!-- Put NR cellular interfaces into a distinct subnet. -->
+    <interface hosts="gnb" names="cellular" address="10.x.x.x" netmask="255.0.0.0"/>
+    <interface hosts="ue*" names="cellular" address="10.x.x.x" netmask="255.0.0.0"/>
+
+    <!-- Use a different subnet for core and data-network links. -->
+    <interface hosts="*" address="192.168.x.x" netmask="255.255.255.0"/>
+</config>
+

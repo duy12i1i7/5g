@@ -1,0 +1,21 @@
+{
+  "appDid": "RESPONSEMECAPP",
+  "appName": "MECResponseApp",
+  "appProvider": "scenarios.vehicular_multi_cell.apps.VehicularMECResponseApp",
+  "appInfoName": "vehicular-response-app",
+  "appDescription": "Vehicular MEC response service for request/response latency benchmarking.",
+  "virtualComputeDescriptor": {
+    "virtualDisk": 10,
+    "virtualCpu": 500,
+    "virtualMemory": 10
+  },
+  "appServiceRequired": [
+    {
+      "ServiceDependency": {
+        "serName": "RNIService",
+        "version": "v1",
+        "serCategory": "Network"
+      }
+    }
+  ]
+}

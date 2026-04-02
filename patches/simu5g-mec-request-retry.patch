@@ -1,0 +1,20 @@
+diff --git a/src/apps/mec/MecRequestResponseApp/MECResponseApp.cc b/src/apps/mec/MecRequestResponseApp/MECResponseApp.cc
+index 4bdd15f..d97c20c 100644
+--- a/src/apps/mec/MecRequestResponseApp/MECResponseApp.cc
++++ b/src/apps/mec/MecRequestResponseApp/MECResponseApp.cc
+@@ -256,6 +256,10 @@ void MECResponseApp::established(int connId)
+ 
+         Http::sendGetRequest(mp1Socket_, host.c_str(), uri);
+     }
++    else if (serviceSocket_ != nullptr && connId == serviceSocket_->getSocketId()) {
++        if (currentRequestfMsg_ != nullptr)
++            sendGetRequest();
++    }
+ }
+ 
+ void MECResponseApp::socketClosed(inet::TcpSocket *sock)
+@@ -285,4 +289,3 @@ void MECResponseApp::sendStopAck()
+ }
+ 
+ } //namespace
+-

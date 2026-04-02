@@ -1,0 +1,19 @@
+{
+  "name": "5g-vehicular-omnetpp",
+  "build": {
+    "dockerfile": "../docker/Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspace/5g",
+  "postCreateCommand": "python3 -m pip install --user -r analysis/requirements.txt",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-vscode.cpptools",
+        "timonwong.shellcheck"
+      ]
+    }
+  }
+}

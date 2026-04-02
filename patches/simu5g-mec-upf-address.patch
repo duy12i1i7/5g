@@ -1,0 +1,103 @@
+diff --git a/src/nodes/mec/MECOrchestrator/MecOrchestrator.cc b/src/nodes/mec/MECOrchestrator/MecOrchestrator.cc
+index 3f2196e..cc6c48a 100644
+--- a/src/nodes/mec/MECOrchestrator/MecOrchestrator.cc
++++ b/src/nodes/mec/MECOrchestrator/MecOrchestrator.cc
+@@ -27,12 +27,29 @@
+ #include "nodes/mec/MECOrchestrator/mecHostSelectionPolicies/MecServiceSelectionBased.h"
+ #include "nodes/mec/MECOrchestrator/mecHostSelectionPolicies/AvailableResourcesSelectionBased.h"
+ #include "nodes/mec/MECOrchestrator/mecHostSelectionPolicies/MecHostSelectionBased.h"
+-
+-// Emulation debug
+-#include <iostream>
++#include <inet/networklayer/common/NetworkInterface.h>
++#include <inet/networklayer/contract/IInterfaceTable.h>
+ 
+ namespace simu5g {
+ 
++namespace {
++
++inet::L3Address resolveUpfMecGtpAddress(cModule *mecHost)
++{
++    cModule *upfMec = mecHost->getSubmodule("upf_mec");
++    if (upfMec == nullptr)
++        throw cRuntimeError("MecOrchestrator::resolveUpfMecGtpAddress - MEC host has no upf_mec submodule");
++
++    auto *interfaceTable = check_and_cast<inet::IInterfaceTable *>(upfMec->getSubmodule("interfaceTable"));
++    inet::NetworkInterface *gtpInterface = interfaceTable->findInterfaceByName("ppp0");
++    if (gtpInterface == nullptr || gtpInterface->getIpv4Address().isUnspecified())
++        return inet::L3AddressResolver().resolve(upfMec->getFullPath().c_str());
++
++    return inet::L3Address(gtpInterface->getIpv4Address());
++}
++
++} // namespace
++
+ Define_Module(MecOrchestrator);
+ 
+ 
+@@ -216,7 +233,7 @@ void MecOrchestrator::startMECApp(UALCMPMessage *msg)
+             newMecApp.isEmulated = true;
+ 
+             // Register the address of the MEC app to the Binder, so the GTP knows the endpoint (UPF_MEC) where to forward packets to
+-            inet::L3Address gtpAddress = inet::L3AddressResolver().resolve(newMecApp.mecHost->getSubmodule("upf_mec")->getFullPath().c_str());
++            inet::L3Address gtpAddress = resolveUpfMecGtpAddress(newMecApp.mecHost);
+             binder_->registerMecHostUpfAddress(appInfo->endPoint.addr, gtpAddress);
+         }
+         else {
+@@ -480,4 +497,3 @@ const ApplicationDescriptor *MecOrchestrator::getApplicationDescriptorByAppName(
+ }
+ 
+ } //namespace
+-
+diff --git a/src/nodes/mec/VirtualisationInfrastructureManager/VirtualisationInfrastructureManager.cc b/src/nodes/mec/VirtualisationInfrastructureManager/VirtualisationInfrastructureManager.cc
+index d994987..4c1d095 100644
+--- a/src/nodes/mec/VirtualisationInfrastructureManager/VirtualisationInfrastructureManager.cc
++++ b/src/nodes/mec/VirtualisationInfrastructureManager/VirtualisationInfrastructureManager.cc
+@@ -9,12 +9,32 @@
+ // and cannot be removed from it.
+ //
+ #include <inet/networklayer/common/L3AddressResolver.h>
++#include <inet/networklayer/common/NetworkInterface.h>
++#include <inet/networklayer/contract/IInterfaceTable.h>
+ #include "nodes/mec/VirtualisationInfrastructureManager/VirtualisationInfrastructureManager.h"
+ #include "nodes/mec/UALCMP/UALCMPMessages/UALCMPMessages_m.h"
+ #include "nodes/mec/MECOrchestrator/MECOMessages/MECOrchestratorMessages_m.h"
+ 
+ namespace simu5g {
+ 
++namespace {
++
++inet::L3Address resolveUpfMecGtpAddress(cModule *mecHost)
++{
++    cModule *upfMec = mecHost->getSubmodule("upf_mec");
++    if (upfMec == nullptr)
++        throw cRuntimeError("VirtualisationInfrastructureManager::resolveUpfMecGtpAddress - MEC host has no upf_mec submodule");
++
++    auto *interfaceTable = check_and_cast<inet::IInterfaceTable *>(upfMec->getSubmodule("interfaceTable"));
++    inet::NetworkInterface *gtpInterface = interfaceTable->findInterfaceByName("ppp0");
++    if (gtpInterface == nullptr || gtpInterface->getIpv4Address().isUnspecified())
++        return inet::L3AddressResolver().resolve(upfMec->getFullPath().c_str());
++
++    return inet::L3Address(gtpInterface->getIpv4Address());
++}
++
++} // namespace
++
+ Define_Module(VirtualisationInfrastructureManager);
+ 
+ 
+@@ -69,7 +89,8 @@ void VirtualisationInfrastructureManager::initialize(int stage)
+ 
+     // register MEC addresses to the Binder
+     inet::L3Address mecHostAddress = inet::L3AddressResolver().resolve(virtualisationInfr->getFullPath().c_str());
+-    inet::L3Address gtpAddress = inet::L3AddressResolver().resolve(mecHost->getSubmodule("upf_mec")->getFullPath().c_str());
++    // Use the MEC UPF core-facing interface as the GTP tunnel endpoint.
++    inet::L3Address gtpAddress = resolveUpfMecGtpAddress(mecHost.get());
+     binder_->registerMecHostUpfAddress(mecHostAddress, gtpAddress);
+     binder_->registerMecHost(mecHostAddress);
+ 
+@@ -521,4 +542,3 @@ void VirtualisationInfrastructureManager::reserveResourcesBGApps()
+ }
+ 
+ } //namespace
+-
